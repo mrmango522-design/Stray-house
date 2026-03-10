@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>流浪貓狗安全屋控制台</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier"></script>
+    
+    <style>
+        :root {
+            --primary: #FF9800;
+            --primary-hover: #F57C00;
+            --bg-color: #FFF8E1;
+            --text-color: #5D4037;
+            --panel-bg: #FFFFFF;
+            --action-btn: #4FC3F7;
+            --action-btn-hover: #29B6F6;
+        }
+        body { font-family: 'PingFang HK', 'Microsoft JhengHei', sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; text-align: center; }
+        .header { margin-bottom: 20px; }
+        h1 { color: var(--primary); font-size: 2.5em; margin-bottom: 10px; }
+        .btn-orange { background-color: var(--primary); color: white; border: none; padding: 10px 20px; font-size: 1em; border-radius: 20px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: 0.3s; }
+        .btn-orange:hover { background-color: var(--primary-hover); }
+        .btn-orange:disabled { background-color: #ccc; cursor: not-allowed; box-shadow: none; }
+        
+        .main-container { display: flex; justify-content: center; align-items: center; flex-direction: column; }
+        .panel { background-color: var(--panel-bg); padding: 25px; border-radius: 20px; box-shadow: 0 8px 24px rgba(255, 152, 0, 0.25); width: 850px; display: flex; flex-direction: column; align-items: center; }
+
+        .location-controls { margin-bottom: 10px; width: 100%; background-color: #FFF3E0; padding: 10px; border-radius: 10px; }
+        .location-controls label { font-weight: bold; font-size: 1.1em; margin-right: 10px; }
+        #locationSelect { padding: 6px 15px; border-radius: 10px; border: 2px solid var(--primary); font-size: 1em; font-weight: bold; outline: none; cursor: pointer; color: var(--text-color); }
+
+        .content-wrapper { display: flex; gap: 20px; width: 100%; margin-bottom: 15px; margin-top: 5px; }
+        .camera-section { flex: 2; display: flex; flex-direction: column; }
+        .video-container { position: relative; width: 100%; border-radius: 15px; overflow: hidden; border: 4px solid var(--primary); background-color: #000; min-height: 330px; }
+        video { width: 100%; display: block; transform: scaleX(1); }
+        video.flipped { transform: scaleX(-1); }
+        
+        .camera-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; background-color: #f1f1f1; padding: 8px 15px; border-radius: 10px; }
+        .result-text { font-size: 1.1em; font-weight: bold; color: #d32f2f; }
+
+        .operation-section { flex: 1; background-color: #E1F5FE; border: 3px solid #81D4FA; border-radius: 15px; padding: 15px; display: flex; flex-direction: column; gap: 12px; }
+        .operation-section h3 { margin: 0 0 5px 0; color: #0277BD; font-size: 1.1em; border-bottom: 2px solid #81D4FA; padding-bottom: 5px; }
+        .btn-action { background-color: var(--action-btn); color: white; border: none; padding: 10px; border-radius: 10px; font-size: 1em; font-weight: bold; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .btn-action:hover { background-color: var(--action-btn-hover); }
+        .btn-action:active { transform: scale(0.96); }
+        .btn-row { display: flex; gap: 8px; width: 100%; }
+        .btn-row .btn-action { flex: 1; padding: 10px 5px; font-size: 0.95em; }
+
+        .data-display { background-color: white; padding: 8px; border-radius: 8px; font-weight: bold; color: #424242; text-align: left; font-size: 0.95em; }
+        .data-display span { color: #E64A19; font-size: 1.1em; float: right; }
+        .comm-val { color: #1976D2 !important; float: none !important; font-size: 1em !important; margin-left: 5px; }
+
+        .train-container { width: 100%; margin-top: 10px; }
+        .train-group { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+        .btn-train { background-color: #81C784; color: white; border: none; padding: 12px; border-radius: 10px; font-size: 1em; cursor: pointer; transition: 0.2s; user-select: none; }
+        .btn-train:active { background-color: #388E3C; transform: scale(0.98); }
+        
+        table { width: 100%; margin-top: 15px; border-collapse: collapse; }
+        th, td { border: 2px solid #FFE0B2; padding: 8px; text-align: center; font-size: 1em; }
+        th { background-color: #FFECB3; }
+        
+        #statusMessage { margin-top: 10px; font-weight: bold; color: #d32f2f; }
+        .control-group { display: flex; gap: 15px; margin-top: 15px; justify-content: center; width: 100%; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>🐾 流浪貓狗安全屋 🐾</h1>
+        <button id="connectBtn" class="btn-orange" style="font-size: 1.2em; padding: 12px 25px;">🔌 連接 Micro:bit</button>
+        <div id="statusMessage">載入 AI 模型中，請稍候...</div>
+    </div>
+
+    <div class="main-container">
+        <div class="panel">
+
+            <div class="location-controls">
+                <label for="locationSelect">📍 目前鏡頭位置：</label>
+                <select id="locationSelect">
+                    <option value="屋內">安全屋內</option>
+                    <option value="屋外">安全屋外</option>
+                </select>
+            </div>
+
+            <div class="content-wrapper">
+                
+                <div class="camera-section">
+                    <div class="video-container">
+                        <video id="videoMain" autoplay playsinline></video>
+                    </div>
+                    <div class="camera-actions">
+                        <button class="btn-orange" style="font-size: 0.9em; padding: 6px 12px;" onclick="toggleFlip('videoMain')">↔️ 水平翻轉影像</button>
+                        <div id="predictResult" class="result-text">結果：等待辨認...</div>
+                    </div>
+                </div>
+
+                <div class="operation-section">
+                    <h3>⚙️ 設備控制</h3>
+                    <div class="btn-row">
+                        <button class="btn-action" onclick="sendCommand('Open Light')">💡 開 LED</button>
+                        <button class="btn-action" onclick="sendCommand('Close Light')">💡 關 LED</button>
+                    </div>
+                    <button class="btn-action" onclick="updateFoodRecord()">🍖 更換糧食</button>
+                    <button class="btn-action" onclick="sendCommand('CMD,HEAT')">♨️ 開/關加熱貼</button>
+                    
+                    <h3>🌡️ 環境溫度</h3>
+                    <div class="data-display">室內：<span id="tempIndoor">-- °C</span></div>
+                    <div class="data-display">室外：<span id="tempOutdoor">-- °C</span></div>
+
+                    <h3>📡 通訊狀態</h3>
+                    <div class="data-display">📤 指令:<span id="lastSentCmd" class="comm-val">無</span></div>
+                    <div class="data-display">⏳ AI發送:<span id="aiCooldown" class="comm-val" style="color:#E64A19!important;">準備就緒</span></div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <button id="startPredictBtn" class="btn-orange" style="width: 200px;" onclick="startPredicting()">▶️ 開始辨認</button>
+                <button id="stopPredictBtn" class="btn-orange" style="width: 200px;" onclick="stopPredicting()" disabled>⏹️ 停止辨認</button>
+            </div>
+
+            <div class="train-container">
+                <button id="toggleTrainBtn" class="btn-orange" style="width: 100%; background-color: #8D6E63;" onclick="toggleTrainArea()">🔽 隱藏學習區</button>
+                
+                <div id="trainArea" style="display: block;">
+                    <div class="train-group">
+                        <button class="btn-train" onmousedown="startTrain(0, 'videoMain')" onmouseup="stopTrain()" onmouseleave="stopTrain()">長按學習：Class 1 (小黃 🐕)</button>
+                        <button class="btn-train" onmousedown="startTrain(1, 'videoMain')" onmouseup="stopTrain()" onmouseleave="stopTrain()">長按學習：Class 2 (小灰 🐺)</button>
+                        <button class="btn-train" onmousedown="startTrain(2, 'videoMain')" onmouseup="stopTrain()" onmouseleave="stopTrain()">長按學習：Class 3 (小黑 🐈‍⬛)</button>
+                        <button class="btn-train" onmousedown="startTrain(3, 'videoMain')" onmouseup="stopTrain()" onmouseleave="stopTrain()">長按學習：背景 (無動物 🏡)</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>類別</th>
+                                <th>相似度</th>
+                                <th>相片數量</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Class 1 (小黃)</td><td id="conf-0">0%</td><td id="count-0">0</td></tr>
+                            <tr><td>Class 2 (小灰)</td><td id="conf-1">0%</td><td id="count-1">0</td></tr>
+                            <tr><td>Class 3 (小黑)</td><td id="conf-2">0%</td><td id="count-2">0</td></tr>
+                            <tr><td>背景</td><td id="conf-3">0%</td><td id="count-3">0</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 已經設定好您的 Google Apps Script 網址
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxsodoONQvtv1yZSOFCg3fDL8AMnRoVniZdiSNqsuNA5zKXyMoOXRvH8qSIbMk_Qm3uHQ/exec";
+        // ==========================================
+
+        let classifier;
+        let mobilenetModule;
+        let trainInterval;
+        let isPredicting = false;
+        let classCounts = [0, 0, 0, 0];
+        
+        const displayNames = ["小黃", "小灰", "小黑", "背景"]; 
+        let port;
+        let writer;
+        let lastSendTime = 0; 
+
+        // 取得當前格式化的日期與時間
+        function getCurrentDateTime() {
+            const now = new Date();
+            const date = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
+            const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+            return { date, time };
+        }
+
+        // 傳送資料到 Google Sheet 的共用函式
+        function sendToGoogleSheet(dataPayload) {
+            if (!WEB_APP_URL) {
+                console.warn("尚未設定 Google Sheet 的 Web App URL，無法記錄資料。");
+                return;
+            }
+            fetch(WEB_APP_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(dataPayload)
+            })
+            .then(res => res.json())
+            .then(result => console.log("Google Sheet 更新成功:", result))
+            .catch(err => console.error("Google Sheet 更新失敗:", err));
+        }
+
+        // 按下更換糧食的動作
+        function updateFoodRecord() {
+            sendCommand('Food'); // 傳送給 Micro:bit
+            
+            // 同時寫入 Google Sheet (工作表2)
+            const dt = getCurrentDateTime();
+            sendToGoogleSheet({
+                type: 'food',
+                date: dt.date,
+                time: dt.time
+            });
+        }
+
+        async function init() {
+            await setupCamera(); 
+            try {
+                classifier = knnClassifier.create();
+                mobilenetModule = await mobilenet.load({ version: 2, alpha: 1.0 });
+                document.getElementById('statusMessage').style.color = 'green';
+                document.getElementById('statusMessage').innerText = "✅ AI 模型載入完成！可以開始學習。";
+                
+                requestAnimationFrame(updateCooldownUI);
+            } catch (err) {
+                document.getElementById('statusMessage').innerText = "❌ AI 模型載入失敗，請確認網路連線。";
+            }
+        }
+
+        async function setupCamera() {
+            const videoElement = document.getElementById('videoMain');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                videoElement.srcObject = stream;
+            } catch (error) {
+                alert("無法存取相機！請確認已允許瀏覽器使用相機權限。");
+            }
+        }
+
+        function toggleFlip(videoId) {
+            document.getElementById(videoId).classList.toggle('flipped');
+        }
+
+        function toggleTrainArea() {
+            const trainArea = document.getElementById('trainArea');
+            const toggleBtn = document.getElementById('toggleTrainBtn');
+            if (trainArea.style.display === "none") {
+                trainArea.style.display = "block";
+                toggleBtn.innerText = "🔽 隱藏學習區";
+            } else {
+                trainArea.style.display = "none";
+                toggleBtn.innerText = "▶️ 展開學習區";
+            }
+        }
+
+        function startTrain(classId, videoId) {
+            if (!mobilenetModule) return;
+            const video = document.getElementById(videoId);
+            if (!video.srcObject) return;
+            
+            trainInterval = setInterval(() => {
+                const img = tf.browser.fromPixels(video);
+                const logits = mobilenetModule.infer(img, true);
+                classifier.addExample(logits, classId);
+                classCounts[classId]++;
+                document.getElementById(`count-${classId}`).innerText = classCounts[classId];
+                img.dispose(); 
+            }, 100);
+        }
+
+        function stopTrain() {
+            clearInterval(trainInterval);
+        }
+
+        function startPredicting() {
+            if (classifier.getNumClasses() === 0) {
+                alert("請先長按綠色按鈕提供一些學習相片！");
+                return;
+            }
+            isPredicting = true;
+            document.getElementById('startPredictBtn').disabled = true;
+            document.getElementById('stopPredictBtn').disabled = false;
+            document.getElementById('statusMessage').innerText = "🔍 正在辨認中...";
+            predictLoop();
+        }
+
+        function stopPredicting() {
+            isPredicting = false;
+            document.getElementById('startPredictBtn').disabled = false;
+            document.getElementById('stopPredictBtn').disabled = true;
+            document.getElementById('statusMessage').innerText = "⏸️ 辨認已停止";
+            document.getElementById('predictResult').innerText = "結果：等待辨認...";
+            for(let i=0; i<4; i++) {
+                document.getElementById(`conf-${i}`).innerText = "0%";
+            }
+        }
+
+        async function predictLoop() {
+            if (!isPredicting) return;
+            const video = document.getElementById('videoMain');
+            
+            if (video.readyState === 4) {
+                const img = tf.browser.fromPixels(video);
+                const logits = mobilenetModule.infer(img, true);
+                const result = await classifier.predictClass(logits);
+
+                for (let i = 0; i < 4; i++) {
+                    const conf = result.confidences[i] || 0;
+                    document.getElementById(`conf-${i}`).innerText = Math.round(conf * 100) + "%";
+                }
+
+                const labelStr = result.label;
+                const topIndex = parseInt(labelStr, 10);
+                const topConf = Math.round((result.confidences[labelStr] || 0) * 100);
+                
+                document.getElementById('predictResult').innerText = `結果：${displayNames[topIndex]} (${topConf}%)`;
+
+                const currentTime = Date.now();
+
+                // 只有不是背景 (3) 才進入處理
+                if (topIndex !== 3) { 
+                    if (currentTime - lastSendTime >= 3000) { 
+                        
+                        let cmdToSend = "";
+                        let catName = "";
+
+                        if (topIndex === 0) { cmdToSend = "C1"; catName = "小黃"; }
+                        else if (topIndex === 1) { cmdToSend = "C2"; catName = "小灰"; }
+                        else if (topIndex === 2) { cmdToSend = "C3"; catName = "小黑"; }
+
+                        if (cmdToSend !== "") {
+                            // 1. 發送給 Micro:bit
+                            sendCommand(cmdToSend); 
+                            lastSendTime = currentTime; 
+
+                            // 2. 發送給 Google Sheet (工作表1)
+                            const dt = getCurrentDateTime();
+                            const locValue = document.getElementById('locationSelect').value;
+                            const locStr = (locValue === "屋內") ? "內" : "外";
+
+                            sendToGoogleSheet({
+                                type: 'detection',
+                                date: dt.date,
+                                time: dt.time,
+                                houseId: "1號",
+                                location: locStr,
+                                catId: catName,
+                                abnormal: "否"
+                            });
+                        }
+                    }
+                }
+                img.dispose();
+            }
+            requestAnimationFrame(predictLoop);
+        }
+
+        function updateCooldownUI() {
+            const currentTime = Date.now();
+            const timePassed = currentTime - lastSendTime;
+            const cooldownUI = document.getElementById('aiCooldown');
+            
+            if (lastSendTime > 0 && timePassed < 3000) {
+                const remainSec = Math.ceil((3000 - timePassed) / 1000);
+                cooldownUI.innerText = `冷卻中 (${remainSec}s)`;
+                cooldownUI.style.color = "#d32f2f"; 
+            } else {
+                cooldownUI.innerText = "準備就緒";
+                cooldownUI.style.color = "#388E3C"; 
+            }
+            requestAnimationFrame(updateCooldownUI);
+        }
+
+        document.getElementById('connectBtn').addEventListener('click', async () => {
+            if (!("serial" in navigator)) {
+                alert("您的瀏覽器不支援 Web Serial API。");
+                return;
+            }
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 }); 
+                writer = port.writable.getWriter();
+                
+                document.getElementById('connectBtn').innerText = "✅ 已連接 Micro:bit";
+                document.getElementById('connectBtn').style.backgroundColor = "#4CAF50";
+                
+                readFromMicrobit();
+            } catch (error) {
+                console.error("Micro:bit 連線錯誤:", error);
+            }
+        });
+
+        async function sendCommand(message) {
+            document.getElementById('lastSentCmd').innerText = message;
+
+            if (writer) {
+                const data = new TextEncoder().encode(message + "\n");
+                await writer.write(data);
+            }
+        }
+
+        async function readFromMicrobit() {
+            const reader = port.readable.getReader();
+            let buffer = "";
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buffer += new TextDecoder().decode(value);
+                    let lines = buffer.split('\n');
+                    buffer = lines.pop(); 
+                    
+                    for (let line of lines) {
+                        line = line.trim();
+                        if (line.startsWith("TEMP,")) {
+                            let parts = line.split(',');
+                            if (parts.length === 3) {
+                                document.getElementById('tempIndoor').innerText = parts[1] + " °C";
+                                document.getElementById('tempOutdoor').innerText = parts[2] + " °C";
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("讀取 Serial 資料錯誤:", error);
+            } finally {
+                reader.releaseLock();
+            }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
