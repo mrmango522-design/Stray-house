@@ -104,11 +104,12 @@
                         <button class="btn-action" onclick="sendCommand('Close Light')">💡 關 LED</button>
                     </div>
                     <button class="btn-action" onclick="updateFoodRecord()">🍖 更換糧食</button>
+                    <button class="btn-action" onclick="sendCommand('Clean')">🧹 清理糧食</button>
                     <button class="btn-action" onclick="sendCommand('CMD,HEAT')">♨️ 開/關加熱貼</button>
                     
                     <h3>🌡️ 環境溫度</h3>
-                    <div class="data-display">室內：<span id="tempIndoor">-- °C</span></div>
-                    <div class="data-display">室外：<span id="tempOutdoor">-- °C</span></div>
+                    <div class="data-display">室內：<span id="tempIndoor">18 °C</span></div>
+                    <div class="data-display">室外：<span id="tempOutdoor">15 °C</span></div>
 
                     <h3>📡 通訊狀態</h3>
                     <div class="data-display">📤 指令:<span id="lastSentCmd" class="comm-val">無</span></div>
@@ -154,7 +155,7 @@
 
     <script>
         // ==========================================
-        // 已經設定好您的 Google Apps Script 網址
+        // Google Apps Script 網址
         const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxsodoONQvtv1yZSOFCg3fDL8AMnRoVniZdiSNqsuNA5zKXyMoOXRvH8qSIbMk_Qm3uHQ/exec";
         // ==========================================
 
@@ -405,6 +406,7 @@
                     
                     for (let line of lines) {
                         line = line.trim();
+                        // 如果 Micro:bit 傳送溫度，這裡會即時覆蓋掉預設的 18 和 15 度
                         if (line.startsWith("TEMP,")) {
                             let parts = line.split(',');
                             if (parts.length === 3) {
